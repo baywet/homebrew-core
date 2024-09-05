@@ -1,8 +1,8 @@
 class CppHttplib < Formula
   desc "C++ header-only HTTP/HTTPS server and client library"
   homepage "https://github.com/yhirose/cpp-httplib"
-  url "https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.17.1.tar.gz"
-  sha256 "044c5a233da242e981d9543dd136a5945e0549c5641a0373934db88bbd192f41"
+  url "https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.17.2.tar.gz"
+  sha256 "c1234649a9198d04c42178bc434b51032b75cf295005bcfd040410267c1a75f1"
   license "MIT"
 
   bottle do
@@ -60,8 +60,8 @@ class CppHttplib < Formula
         }
       }
     CPP
-    system ENV.cxx, "server.cpp", "-I#{include}", "-lpthread", "-std=c++11", "-o", "server"
-    system ENV.cxx, "client.cpp", "-I#{include}", "-lpthread", "-std=c++11", "-o", "client"
+    system ENV.cxx, "server.cpp", "-I#{include}", "-lpthread", "-std=c++17", "-o", "server"
+    system ENV.cxx, "client.cpp", "-I#{include}", "-lpthread", "-std=c++17", "-o", "client"
 
     fork do
       exec "./server"
