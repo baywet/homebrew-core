@@ -4,13 +4,22 @@ class Coin3d < Formula
   license all_of: ["BSD-3-Clause", "ISC"]
 
   stable do
-    url "https://github.com/coin3d/coin/releases/download/v4.0.2/coin-4.0.2-src.zip"
-    sha256 "b764a88674f96fa540df3a9520d80586346843779858dcb6cd8657725fcb16f0"
+    url "https://github.com/coin3d/coin/releases/download/v4.0.3/coin-4.0.3-src.zip"
+    sha256 "b33cb6e2b7e93757239f852646e14c5f087a84e570dfe73afe5c65d5ac5e2d80"
 
-    # TODO: migrate pyside@2 -> pyside and python@3.10 -> python@3.12 on next pivy release
+    resource "soqt" do
+      url "https://github.com/coin3d/soqt/releases/download/v1.6.2/soqt-1.6.2-src.tar.gz"
+      sha256 "fb483b20015ab827ba46eb090bd7be5bc2f3d0349c2f947c3089af2b7003869c"
+    end
+
+    # We use the pre-release to support `pyside` and `python@3.12`.
+    # This matches Arch Linux[^1] and Debian[^2] packages.
+    #
+    # [^1]: https://archlinux.org/packages/extra/x86_64/python-pivy/
+    # [^2]: https://packages.debian.org/trixie/python3-pivy
     resource "pivy" do
-      url "https://github.com/coin3d/pivy/archive/refs/tags/0.6.8.tar.gz"
-      sha256 "c443dd7dd724b0bfa06427478b9d24d31e0c3b5138ac5741a2917a443b28f346"
+      url "https://github.com/coin3d/pivy/archive/refs/tags/0.6.9.a0.tar.gz"
+      sha256 "2c2da80ae216fe06394562f4a8fc081179d678f20bf6f8ec412cda470d7eeb91"
     end
   end
 
@@ -31,6 +40,10 @@ class Coin3d < Formula
   head do
     url "https://github.com/coin3d/coin.git", branch: "master"
 
+    resource "soqt" do
+      url "https://github.com/coin3d/soqt.git", branch: "master"
+    end
+
     resource "pivy" do
       url "https://github.com/coin3d/pivy.git", branch: "master"
     end
@@ -38,11 +51,11 @@ class Coin3d < Formula
 
   depends_on "cmake" => :build
   depends_on "doxygen" => :build
-  depends_on "ninja" => :build
   depends_on "swig" => :build
   depends_on "boost"
-  depends_on "pyside@2"
-  depends_on "python@3.10"
+  depends_on "pyside"
+  depends_on "python@3.12"
+  depends_on "qt"
 
   on_linux do
     depends_on "mesa"
@@ -50,7 +63,7 @@ class Coin3d < Formula
   end
 
   def python3
-    "python3.10"
+    "python3.12"
   end
 
   def install
@@ -58,14 +71,33 @@ class Coin3d < Formula
                     "-DCOIN_BUILD_MAC_FRAMEWORK=OFF",
                     "-DCOIN_BUILD_DOCUMENTATION=ON",
                     "-DCOIN_BUILD_TESTS=OFF",
-                    *std_cmake_args
+                    *std_cmake_args(find_framework: "FIRST")
     system "cmake", "--build", "_build"
     system "cmake", "--install", "_build"
 
+    resource("soqt").stage do
+      system "cmake", "-S", ".", "-B", "_build",
+                      "-DCMAKE_INSTALL_RPATH=#{rpath}",
+                      "-DSOQT_BUILD_MAC_FRAMEWORK=OFF",
+                      "-DSOQT_BUILD_DOCUMENTATION=OFF",
+                      "-DSOQT_BUILD_TESTS=OFF",
+                      *std_cmake_args(find_framework: "FIRST")
+      system "cmake", "--build", "_build"
+      system "cmake", "--install", "_build"
+    end
+
     resource("pivy").stage do
-      ENV.append_path "CMAKE_PREFIX_PATH", prefix.to_s
-      ENV["LDFLAGS"] = "-Wl,-rpath,#{opt_lib}"
-      system python3, "-m", "pip", "install", *std_pip_args, "."
+      # Work around brew's Cellar directory structure
+      cmakelists = ["CMakeLists.txt", "interfaces/CMakeLists.txt"]
+      inreplace cmakelists, "${Python_SITEARCH}", prefix/Language::Python.site_packages(python3)
+
+      system "cmake", "-S", ".", "-B", "_build",
+                      "-DCMAKE_INSTALL_RPATH=#{lib}",
+                      "-DPIVY_USE_QT6=ON",
+                      "-DPython_EXECUTABLE=#{which(python3)}",
+                      *std_cmake_args(find_framework: "FIRST")
+      system "cmake", "--build", "_build"
+      system "cmake", "--install", "_build"
     end
   end
 
@@ -88,12 +120,11 @@ class Coin3d < Formula
     system ENV.cc, "test.cpp", "-L#{lib}", "-lCoin", *opengl_flags, "-o", "test"
     system "./test"
 
-    ENV.append_path "PYTHONPATH", Formula["pyside@2"].opt_prefix/Language::Python.site_packages(python3)
     # Set QT_QPA_PLATFORM to minimal to avoid error:
     # "This application failed to start because no Qt platform plugin could be initialized."
     ENV["QT_QPA_PLATFORM"] = "minimal" if OS.linux? && ENV["HOMEBREW_GITHUB_ACTIONS"]
     system python3, "-c", <<~EOS
-      import shiboken2
+      import shiboken6
       from pivy.sogui import SoGui
       assert SoGui.init("test") is not None
     EOS
